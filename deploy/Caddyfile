@@ -1,0 +1,8 @@
+# Static company site, served behind the VPS front proxy (which terminates TLS for tovaitech.in
+# and forwards "/" here). Pure file server — no app, no DB. Deploys independently of any product.
+:80 {
+	root * /srv/site
+	try_files {path} /index.html
+	file_server
+	encode gzip
+}
