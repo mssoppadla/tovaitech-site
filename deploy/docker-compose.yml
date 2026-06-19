@@ -8,5 +8,5 @@ services:
     restart: unless-stopped
     ports: ["8090:80"]
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./public:/srv/site:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../public:/srv/site:ro
