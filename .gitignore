@@ -1,2 +1,9 @@
 .DS_Store
 *.log
+node_modules/
+server/node_modules/
+
+# Local secrets and runtime content store (never commit)
+deploy/.env
+data/content.json
+data/.session-secret

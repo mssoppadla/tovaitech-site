@@ -1,12 +1,26 @@
-# Tovaitech company site — standalone static stack. Own compose project + own host port (8090),
-# fully independent of the appointments product (clinic-saas) and cpmai. Deploying this restarts
-# ONLY this container.
+# Tovaitech company site — small Node/Express app (server-rendered static pages
+# + password-protected runtime content admin). Own compose project + own host
+# port (8090), fully independent of the appointments product (clinic-saas) and
+# cpmai. Deploying this restarts ONLY this container.
 name: tovaitech-site
 services:
   site:
-    image: caddy:2-alpine
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: tovaitech-site:latest
     restart: unless-stopped
-    ports: ["8090:80"]
+    ports: ["8090:8080"]
+    environment:
+      # Pass-through form (bare names, no "=value"): compose injects each value
+      # verbatim from the environment deploy.sh exports from deploy/.env — no
+      # ${...} interpolation, so passwords with $, spaces, etc. survive intact.
+      # Without ADMIN_PASSWORD the public pages still work but admin login is disabled.
+      - ADMIN_PASSWORD
+      - SESSION_SECRET
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../public:/srv/site:ro
+      # Persistent content store (content.json + session secret) survives redeploys.
+      - site-data:/data
+
+volumes:
+  site-data:

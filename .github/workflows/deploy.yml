@@ -1,6 +1,8 @@
 name: deploy
-# Test (static) -> manual approval (production environment) -> SSH -> deploy.sh. Independent of
+# Manual approval (production environment) -> sync secrets -> SSH -> deploy.sh. Independent of
 # the appointments product: own repo, own container (port 8090). cpmai + clinic-saas untouched.
+# Admin/session secrets come from the `production` environment secrets (ADMIN_PASSWORD,
+# SESSION_SECRET), not from any committed file.
 on:
   push: { branches: [main] }
   workflow_dispatch:
@@ -26,6 +28,18 @@ jobs:
             ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
           fi
           chmod 600 ~/.ssh/known_hosts
+      - name: Sync secrets to VPS
+        # Render deploy/.env on the VPS from GitHub *environment* secrets. Values are
+        # expanded by printf and streamed over SSH stdin — never placed on the command
+        # line or written into the workflow, and masked in logs by Actions.
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          printf 'ADMIN_PASSWORD=%s\nSESSION_SECRET=%s\n' "$ADMIN_PASSWORD" "$SESSION_SECRET" \
+            | ssh -o StrictHostKeyChecking=yes -o BatchMode=yes \
+                "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+                'set -e; mkdir -p /opt/tovaitech-site/deploy; umask 077; cat > /opt/tovaitech-site/deploy/.env'
       - name: Deploy on VPS
         run: |
           ssh -o StrictHostKeyChecking=yes -o BatchMode=yes \

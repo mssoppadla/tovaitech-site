@@ -1,8 +1,9 @@
-# Static company site, served behind the VPS front proxy (which terminates TLS for tovaitech.in
-# and forwards "/" here). Pure file server — no app, no DB. Deploys independently of any product.
-:80 {
-	root * /srv/site
-	try_files {path} /index.html
-	file_server
-	encode gzip
-}
+# DEPRECATED / UNUSED.
+#
+# The site is no longer a pure static file server. It now runs as a small
+# Node/Express app (see deploy/Dockerfile + docker-compose.yml) that
+# server-renders the pages and exposes a runtime content admin at /admin.
+#
+# The HOST Caddy (/etc/caddy/Caddyfile on the VPS) still terminates TLS for
+# tovaitech.in and forwards "/" to this container on port 8090. No in-container
+# Caddy is used anymore; this file is kept only to avoid confusion.
