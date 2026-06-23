@@ -1,0 +1,16 @@
+{
+  "name": "tovaitech-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tovaitech company site — static pages with a small runtime-editable content backend.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

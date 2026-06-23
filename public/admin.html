@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>Tovaitech — Site Admin</title>
+<link rel="stylesheet" href="/styles/app.css?v=5"/>
+<style>
+.wrap{max-width:860px;margin:0 auto;padding:18px 16px 80px}
+.wrap a{color:var(--brand)}
+.login{max-width:380px;margin:60px auto}
+.grp{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 18px;margin:0 0 16px}
+.grp h2{font-size:1rem;margin:0 0 12px}
+.grp h3{font-size:.85rem;margin:0;color:var(--ink)}
+textarea.input{min-height:84px;resize:vertical;font-family:inherit;line-height:1.5}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){ .row{grid-template-columns:1fr} }
+.item{border:1px solid var(--line);border-radius:var(--r2);padding:12px;margin:0 0 12px;background:#fbfcfd}
+.item .itemhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px}
+.bar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;padding:12px 16px;margin:-18px -16px 18px}
+.bar .sp{flex:1}
+.btn.sm{min-height:40px;padding:8px 14px;font-size:.85rem;width:auto}
+.rm{background:none;border:1px solid var(--red);color:var(--red);border-radius:9px;padding:6px 10px;font-size:.78rem;cursor:pointer}
+.status{font-size:.82rem;color:var(--muted)}
+.status.ok{color:var(--ok)} .status.bad{color:var(--red)}
+select.input{appearance:auto}
+.hint{font-size:.74rem;color:var(--muted);margin:2px 0 0}
+</style>
+</head>
+<body>
+
+<div id="loginView" class="login" style="display:none">
+  <div class="grp">
+    <h2>Site Admin</h2>
+    <div class="field">
+      <label for="pw">Admin password</label>
+      <input class="input" id="pw" type="password" autocomplete="current-password"/>
+    </div>
+    <div id="loginErr" class="err" style="display:none"></div>
+    <button class="btn" id="loginBtn" style="margin-top:10px">Log in</button>
+  </div>
+</div>
+
+<div id="editorView" class="wrap" style="display:none">
+  <div class="bar">
+    <strong>Tovaitech site content</strong>
+    <span class="sp"></span>
+    <span id="saveStatus" class="status"></span>
+    <button class="btn ghost sm" id="reloadBtn">Reload</button>
+    <button class="btn sm" id="saveBtn">Save changes</button>
+    <button class="btn ghost sm" id="logoutBtn">Log out</button>
+  </div>
+  <p class="hint" style="margin:-6px 0 14px">Changes go live immediately after you click <b>Save changes</b> — no redeploy needed. View the live pages: <a href="/" target="_blank">Home</a> · <a href="/privacy" target="_blank">Privacy</a> · <a href="/data-deletion" target="_blank">Data Deletion</a></p>
+  <div id="form"></div>
+  <div style="margin-top:18px">
+    <button class="btn ghost sm" id="resetBtn">Load default content into form</button>
+    <p class="hint">This only fills the form with defaults — nothing is saved until you click Save changes.</p>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+
+// ---- tiny DOM helper ----
+function el(tag, attrs, children) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (k === 'style') n.style.cssText = attrs[k];
+    else if (k.startsWith('on') && typeof attrs[k] === 'function') n.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+  }
+  (Array.isArray(children) ? children : [children]).forEach((c) => {
+    if (c == null) return;
+    n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return n;
+}
+
+function field(label, value, onInput, opts) {
+  opts = opts || {};
+  const id = 'f_' + Math.random().toString(36).slice(2);
+  let input;
+  if (opts.type === 'textarea') {
+    input = el('textarea', { class: 'input', id });
+    input.value = value || '';
+  } else if (opts.type === 'select') {
+    input = el('select', { class: 'input', id });
+    opts.options.forEach((o) => {
+      const op = el('option', { value: o.value }, o.label);
+      if (o.value === value) op.selected = true;
+      input.appendChild(op);
+    });
+  } else {
+    input = el('input', { class: 'input', id, type: opts.type || 'text' });
+    input.value = value || '';
+  }
+  input.addEventListener('input', () => onInput(input.value));
+  input.addEventListener('change', () => onInput(input.value));
+  const wrap = el('div', { class: 'field' }, [el('label', { for: id }, label), input]);
+  if (opts.hint) wrap.appendChild(el('p', { class: 'hint' }, opts.hint));
+  return wrap;
+}
+
+function group(title, nodes) {
+  return el('div', { class: 'grp' }, [el('h2', null, title), ...nodes]);
+}
+
+const STATUS_OPTS = [
+  { value: 'g', label: 'green / live' },
+  { value: 'n', label: 'neutral / coming soon' },
+  { value: 'a', label: 'amber' },
+  { value: 'r', label: 'red' },
+];
+
+function render() {
+  const root = $('form');
+  root.innerHTML = '';
+  const s = state;
+
+  // SITE
+  s.site = s.site || {};
+  root.appendChild(group('Site & branding', [
+    el('div', { class: 'row' }, [
+      field('Brand name', s.site.brandName, (v) => s.site.brandName = v),
+      field('Logo letter', s.site.brandInitial, (v) => s.site.brandInitial = v),
+    ]),
+    field('Tagline (header subtitle)', s.site.tagline, (v) => s.site.tagline = v),
+    el('div', { class: 'row' }, [
+      field('Browser tab title', s.site.title, (v) => s.site.title = v),
+      field('Theme color', s.site.themeColor, (v) => s.site.themeColor = v, { type: 'color' }),
+    ]),
+  ]));
+
+  // CONTACT
+  s.contact = s.contact || {};
+  root.appendChild(group('Contact details', [
+    el('div', { class: 'row' }, [
+      field('Contact email', s.contact.email, (v) => s.contact.email = v),
+      field('WhatsApp number', s.contact.whatsapp, (v) => s.contact.whatsapp = v, { hint: 'Optional. Shown where relevant.' }),
+    ]),
+    el('div', { class: 'row' }, [
+      field('Company name', s.contact.company, (v) => s.contact.company = v),
+      field('Address / location', s.contact.address, (v) => s.contact.address = v),
+    ]),
+  ]));
+
+  // HERO
+  s.hero = s.hero || {};
+  root.appendChild(group('Hero section', [
+    field('Heading', s.hero.title, (v) => s.hero.title = v),
+    field('Heading (Malayalam, optional)', s.hero.titleMl, (v) => s.hero.titleMl = v),
+    field('Subtitle', s.hero.subtitle, (v) => s.hero.subtitle = v, { type: 'textarea' }),
+  ]));
+
+  // PRODUCTS
+  s.products = s.products || [];
+  const prodNodes = [field('Section heading', s.productsHeading, (v) => s.productsHeading = v)];
+  s.products.forEach((p, i) => {
+    prodNodes.push(el('div', { class: 'item' }, [
+      el('div', { class: 'itemhd' }, [
+        el('h3', null, 'Product ' + (i + 1)),
+        el('button', { class: 'rm', onclick: () => { s.products.splice(i, 1); render(); } }, 'Remove'),
+      ]),
+      el('div', { class: 'row' }, [
+        field('Icon (emoji)', p.icon, (v) => p.icon = v),
+        field('Status badge', p.status, (v) => p.status = v, { type: 'select', options: STATUS_OPTS }),
+      ]),
+      el('div', { class: 'row' }, [
+        field('Badge label', p.statusLabel, (v) => p.statusLabel = v),
+        field('Title', p.title, (v) => p.title = v),
+      ]),
+      field('Description', p.body, (v) => p.body = v, { type: 'textarea' }),
+      el('div', { class: 'row' }, [
+        field('Button label (optional)', p.ctaLabel, (v) => p.ctaLabel = v),
+        field('Button link (optional)', p.ctaHref, (v) => p.ctaHref = v),
+      ]),
+      field('Small note (optional)', p.note, (v) => p.note = v),
+    ]));
+  });
+  prodNodes.push(el('button', { class: 'addbtn', onclick: () => {
+    s.products.push({ icon: '✨', status: 'n', statusLabel: 'coming soon', title: '', body: '', ctaLabel: '', ctaHref: '', note: '' });
+    render();
+  } }, '+ Add product'));
+  root.appendChild(group('Products', prodNodes));
+
+  // FOOTER
+  root.appendChild(group('Footer', [
+    field('Footer text', s.footer, (v) => s.footer = v, { type: 'textarea' }),
+  ]));
+
+  // PRIVACY
+  s.privacy = s.privacy || { sections: [] };
+  s.privacy.sections = s.privacy.sections || [];
+  const pvNodes = [
+    el('div', { class: 'row' }, [
+      field('Page title', s.privacy.title, (v) => s.privacy.title = v),
+      field('Last updated', s.privacy.lastUpdated, (v) => s.privacy.lastUpdated = v),
+    ]),
+    field('Intro paragraph', s.privacy.intro, (v) => s.privacy.intro = v, { type: 'textarea' }),
+  ];
+  s.privacy.sections.forEach((sec, i) => {
+    pvNodes.push(el('div', { class: 'item' }, [
+      el('div', { class: 'itemhd' }, [
+        el('h3', null, 'Section ' + (i + 1)),
+        el('button', { class: 'rm', onclick: () => { s.privacy.sections.splice(i, 1); render(); } }, 'Remove'),
+      ]),
+      field('Heading', sec.heading, (v) => sec.heading = v),
+      field('Body', sec.body, (v) => sec.body = v, { type: 'textarea' }),
+    ]));
+  });
+  pvNodes.push(el('button', { class: 'addbtn', onclick: () => {
+    s.privacy.sections.push({ heading: '', body: '' }); render();
+  } }, '+ Add privacy section'));
+  root.appendChild(group('Privacy Policy page', pvNodes));
+
+  // DATA DELETION
+  s.dataDeletion = s.dataDeletion || {};
+  const d = s.dataDeletion;
+  d.emailSteps = d.emailSteps || [];
+  d.whatsappSteps = d.whatsappSteps || [];
+  function stepList(label, arr) {
+    const nodes = [el('h3', null, label)];
+    arr.forEach((st, i) => {
+      nodes.push(el('div', { class: 'itemhd' }, [
+        field('Step ' + (i + 1), st, (v) => arr[i] = v),
+        el('button', { class: 'rm', onclick: () => { arr.splice(i, 1); render(); } }, '✕'),
+      ]));
+    });
+    nodes.push(el('button', { class: 'addbtn', onclick: () => { arr.push(''); render(); } }, '+ Add step'));
+    return el('div', { class: 'item' }, nodes);
+  }
+  root.appendChild(group('User Data Deletion page', [
+    el('div', { class: 'row' }, [
+      field('Page title', d.title, (v) => d.title = v),
+      field('Last updated', d.lastUpdated, (v) => d.lastUpdated = v),
+    ]),
+    field('Intro paragraph', d.intro, (v) => d.intro = v, { type: 'textarea' }),
+    field('Email option heading', d.emailHeading, (v) => d.emailHeading = v),
+    stepList('Email deletion steps', d.emailSteps),
+    field('WhatsApp option heading', d.whatsappHeading, (v) => d.whatsappHeading = v),
+    stepList('WhatsApp deletion steps', d.whatsappSteps),
+    field('Timeline paragraph', d.timeline, (v) => d.timeline = v, { type: 'textarea' }),
+    field('Closing / help note', d.contactNote, (v) => d.contactNote = v, { type: 'textarea' }),
+  ]));
+}
+
+// ---- API ----
+async function api(method, url, body) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(url, opt);
+  return r;
+}
+
+function setStatus(msg, cls) {
+  const s = $('saveStatus');
+  s.textContent = msg || '';
+  s.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+async function showEditor() {
+  $('loginView').style.display = 'none';
+  $('editorView').style.display = 'block';
+  const r = await api('GET', '/site-api/content');
+  if (r.status === 401) return showLogin();
+  state = await r.json();
+  render();
+  setStatus('Loaded.', 'ok');
+  setTimeout(() => setStatus(''), 1500);
+}
+
+function showLogin(err) {
+  $('editorView').style.display = 'none';
+  $('loginView').style.display = 'block';
+  const e = $('loginErr');
+  if (err) { e.textContent = err; e.style.display = 'block'; } else { e.style.display = 'none'; }
+}
+
+async function init() {
+  const r = await api('GET', '/site-api/session');
+  const j = await r.json();
+  if (!j.adminEnabled) return showLogin('Admin is disabled: the server has no ADMIN_PASSWORD set.');
+  if (j.authenticated) showEditor(); else showLogin();
+}
+
+$('loginBtn').addEventListener('click', async () => {
+  const r = await api('POST', '/site-api/login', { password: $('pw').value });
+  if (r.ok) { $('pw').value = ''; showEditor(); }
+  else { const j = await r.json().catch(() => ({})); showLogin(j.error || 'Login failed'); }
+});
+$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('loginBtn').click(); });
+
+$('saveBtn').addEventListener('click', async () => {
+  setStatus('Saving…');
+  const r = await api('PUT', '/site-api/content', state);
+  if (r.ok) { setStatus('Saved — live now.', 'ok'); setTimeout(() => setStatus(''), 2500); }
+  else if (r.status === 401) showLogin('Session expired — please log in again.');
+  else { const j = await r.json().catch(() => ({})); setStatus(j.error || 'Save failed', 'bad'); }
+});
+
+$('reloadBtn').addEventListener('click', showEditor);
+
+$('resetBtn').addEventListener('click', async () => {
+  const r = await api('GET', '/site-api/content/default');
+  if (r.ok) { state = await r.json(); render(); setStatus('Defaults loaded into form (not yet saved).', 'ok'); }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+  await api('POST', '/site-api/logout');
+  showLogin();
+});
+
+init();
+</script>
+</body>
+</html>
