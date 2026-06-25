@@ -6,7 +6,8 @@ REPO="mssoppadla/tovaitech-site"
 MSG="${*:-chore: update site}"
 BR="ship/$(date +%Y%m%d-%H%M%S)"
 if [ -z "$(git status --porcelain)" ]; then echo "Nothing to ship."; exit 0; fi
-echo "==> preflight"; test -f public/index.html && grep -q 'styles/app.css' public/index.html && echo "  ok"
+echo "==> preflight"; test -f server/server.js && node --check server/server.js \
+  && node -e "JSON.parse(require('fs').readFileSync('data/content.default.json','utf8'))" && echo "  ok"
 echo "==> branch $BR"; git checkout -b "$BR"
 git add -A && git commit -m "$MSG"
 git push -u origin "$BR"
