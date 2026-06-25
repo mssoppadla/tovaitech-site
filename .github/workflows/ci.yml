@@ -5,7 +5,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: html present + uses shared stylesheet
-        run: test -f public/index.html && grep -q 'styles/app.css' public/index.html
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install server deps
+        run: cd server && npm install --omit=dev
+      - name: Syntax check server
+        run: node --check server/server.js
+      - name: Validate default content JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('data/content.default.json','utf8')); console.log('content.default.json OK')"
+      - name: Boot server + smoke-test rendered pages
+        run: |
+          ADMIN_PASSWORD=ci-test PORT=8099 DATA_DIR="$(mktemp -d)" node server/server.js &
+          SRV=$!
+          for i in $(seq 1 20); do curl -fsS http://localhost:8099/healthz >/dev/null && break; sleep 1; done
+          # Landing renders and uses the shared stylesheet
+          curl -fsS http://localhost:8099/ | grep -q 'styles/app.css'
+          curl -fsS http://localhost:8099/ | grep -qi 'tovaitech'
+          # Meta-required pages render real content (no JS)
+          curl -fsS http://localhost:8099/privacy | grep -qi 'Privacy Policy'
+          curl -fsS http://localhost:8099/data-deletion | grep -qi 'Data Deletion'
+          curl -fsS http://localhost:8099/data-deletion | grep -q 'DELETE'
+          # Content API is protected
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8099/site-api/content)" = "401"
+          kill "$SRV"
       - name: optional HTML lint (advisory)
         run: npx --yes htmlhint "public/**/*.html" || true
