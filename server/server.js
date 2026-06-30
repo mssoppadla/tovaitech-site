@@ -139,6 +139,7 @@ function layout({ title, themeColor, body, extraHead }) {
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="${esc(themeColor || '#0e7c66')}"/>
+<meta name="facebook-domain-verification" content="ri786akahsaiymuonr6abjqgx74mr6"/>
 <title>${esc(title)}</title>
 <link rel="stylesheet" href="/styles/app.css?v=5"/>
 ${extraHead || ''}
